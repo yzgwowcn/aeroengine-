@@ -5,7 +5,7 @@ const R_GAS = 287.05; // 气体常数 J/(kg*K)
 const G = 9.80665;    // 重力加速度 m/s^2
 
 /**
- * 标准大气模型、
+ * 标准大气模型 
  * @param altitudeKm 几何高度 (km)
  * @returns { T0, P0 } 环境静温(K) 和 环境静压(Pa)
  */
@@ -28,6 +28,7 @@ function getAtmosphere(altitudeKm: number) {
   return { T0, P0 };
 }
 
+// 气体热力学属性
 // 冷端 (进气道、压气机、风扇)
 const PROP_COLD = { cp: 1005, k: 1.4 };
 // 热端 (燃烧室、涡轮、喷管) - 取燃气平均值
@@ -232,25 +233,39 @@ export const calculateCycle = (inputs: EngineInputs): CalculationResult => {
       total_thrust = specific_thrust * massFlow; 
 
       // 耗油率 SFC (kg/N/h)
-      // sfc = m_fuel_hour / Thrust
-      // m_fuel = f * m_core
-      // SFC = (f * m_core * 3600) / (Fs * m_total)
-      //     = (f * 3600) / (Fs * (1+B))
       if (total_thrust > 0) {
          const m_fuel = f * (massFlow / (1 + bypassRatio));
          sfc = (m_fuel * 3600) / total_thrust; 
       }
 
-      // 效率
+      // 效率计算
+      // 修复bug: 当喷管不完全膨胀(P9>P0)时，推力项包含压力项，动能计算需使用有效排气速度
+      // V_eff = V + (P - P0) / (rho * V)
+      // 否则分母(动能变化)会小于分子(推力做功)，导致推进效率 > 100%
+      
+      let V9_eff = V9;
+      if (V9 > 1 && rho9 > 0) {
+          V9_eff = V9 + (P9 - P0) / (rho9 * V9);
+      }
+
+      let V19_eff = V19;
+      if (V19 > 1 && rho19 > 0) {
+          V19_eff = V19 + (P19 - P0) / (rho19 * V19);
+      }
+
       const m_core_abs = massFlow / (1 + bypassRatio);
-      const KE_out = 0.5 * m_core_abs * (1+f) * V9**2 + 0.5 * (massFlow - m_core_abs) * V19**2;
+      
+      // 使用有效速度计算输出动能
+      const KE_out_eff = 0.5 * m_core_abs * (1+f) * V9_eff**2 + 0.5 * (massFlow - m_core_abs) * V19_eff**2;
       const KE_in = 0.5 * massFlow * V0**2;
+      
+      // 输入燃料能量
       const Q_in = m_core_abs * f * Hu_J;
 
       if (Q_in > 0) {
-        thermalEfficiency = (KE_out - KE_in) / Q_in;
-        if (KE_out - KE_in > 0) {
-             propulsiveEfficiency = (total_thrust * V0) / (KE_out - KE_in);
+        thermalEfficiency = (KE_out_eff - KE_in) / Q_in;
+        if (KE_out_eff - KE_in > 0) {
+             propulsiveEfficiency = (total_thrust * V0) / (KE_out_eff - KE_in);
         }
       }
       overallEfficiency = thermalEfficiency * propulsiveEfficiency;
@@ -260,6 +275,7 @@ export const calculateCycle = (inputs: EngineInputs): CalculationResult => {
   if (isNaN(specific_thrust) || !isFinite(specific_thrust)) specific_thrust = 0;
   if (isNaN(total_thrust) || !isFinite(total_thrust)) total_thrust = 0;
   if (isNaN(sfc) || !isFinite(sfc)) sfc = 0;
+  if (propulsiveEfficiency > 1.0) propulsiveEfficiency = 0.999; // 最终安全钳位
 
   return {
     stations: [
@@ -311,13 +327,11 @@ export const calculateTrends = (baseInputs: EngineInputs): ChartPoint[] => {
 
 /**
  * 飞行包线计算
- * 
- * 修正:
  * 发动机并不是在所有高度都吸入相同的物理流量。
- * 假设输入的 massFlow 是海平面静态下的修正流量。
+ * 假设输入的 massFlow 是海平面静态 (SLS) 下的修正流量。
  * 在高空高速时，物理流量 m_dot = m_corr * (delta / sqrt(theta))
- * 计算出的总推力 (Thrust) 具有真实的物理量级意义。
- * SFC 是比值参数，对流量修正不敏感，但推力绝对值非常敏感。
+ * 计算出的总推力 (Thrust) 才具有真实的物理量级意义。
+ * SFC 是比值参数，对流量修正不敏感，推力绝对值对此非常敏感。
  */
 export const calculateEnvelope = (baseInputs: EngineInputs): EnvelopePoint[] => {
     const data: EnvelopePoint[] = [];
@@ -326,9 +340,9 @@ export const calculateEnvelope = (baseInputs: EngineInputs): EnvelopePoint[] => 
     const maxMach = 2.5; 
     const maxAlt = 20;   // km
 
-    // 计算参考点海平面的修正参数
+    // 计算参考点(SLS)的修正参数
     // T=288.15K, P=101325Pa
-    // 假设输入流量即为设计点修正流量
+    // 假设输入流量为设计点修正流量
     const designCorrectedFlow = baseInputs.massFlow; 
 
     for (let i = 0; i <= machSteps; i++) {

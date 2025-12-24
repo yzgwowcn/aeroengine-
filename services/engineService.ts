@@ -1,11 +1,11 @@
-import { EngineInputs, CalculationResult, StationResult, ChartPoint, EnvelopePoint } from '../types';
+import { EngineInputs, CalculationResult, StationResult, ChartPoint, EnvelopePoint, FanTrendPoint, BypassTrendPoint } from '../types';
 
 // 物理常数
 const R_GAS = 287.05; // 气体常数 J/(kg*K)
 const G = 9.80665;    // 重力加速度 m/s^2
 
 /**
- * 标准大气模型 
+ * 标准大气模型 (ISA 1976 简化版)
  * @param altitudeKm 几何高度 (km)
  * @returns { T0, P0 } 环境静温(K) 和 环境静压(Pa)
  */
@@ -28,7 +28,7 @@ function getAtmosphere(altitudeKm: number) {
   return { T0, P0 };
 }
 
-// 气体热力学属性
+// 气体热力学属性 (基于经典教材 Mattingly/Farokhi 的分段常数模型)
 // 冷端 (进气道、压气机、风扇)
 const PROP_COLD = { cp: 1005, k: 1.4 };
 // 热端 (燃烧室、涡轮、喷管) - 取燃气平均值
@@ -239,7 +239,7 @@ export const calculateCycle = (inputs: EngineInputs): CalculationResult => {
       }
 
       // 效率计算
-      // 修复bug: 当喷管不完全膨胀(P9>P0)时，推力项包含压力项，动能计算需使用有效排气速度
+      // 修正: 当喷管不完全膨胀(Choked, P9>P0)时，推力项包含压力项，动能计算需使用"有效排气速度"
       // V_eff = V + (P - P0) / (rho * V)
       // 否则分母(动能变化)会小于分子(推力做功)，导致推进效率 > 100%
       
@@ -326,12 +326,55 @@ export const calculateTrends = (baseInputs: EngineInputs): ChartPoint[] => {
 };
 
 /**
+ * 计算风扇压比变化趋势
+ */
+export const calculateFanTrends = (baseInputs: EngineInputs): FanTrendPoint[] => {
+    const points: FanTrendPoint[] = [];
+    // 风扇压比范围 1.1 到 4.0
+    for (let fpr = 1.1; fpr <= 4.0; fpr += 0.1) {
+        // 确保 FPR < OPR
+        if (fpr >= baseInputs.overallPressureRatio) continue;
+
+        const res = calculateCycle({ ...baseInputs, fanPressureRatio: fpr });
+        if (res.performance.isValid && res.performance.specificThrust > 0) {
+            points.push({
+                fpr: fpr,
+                sfc: res.performance.sfc,
+                specificThrust: res.performance.specificThrust
+            });
+        }
+    }
+    return points;
+};
+
+/**
+ * 计算涵道比变化趋势
+ */
+export const calculateBypassTrends = (baseInputs: EngineInputs): BypassTrendPoint[] => {
+    const points: BypassTrendPoint[] = [];
+    // 涵道比范围 0.2 到 15
+    for (let bpr = 0.2; bpr <= 15.0; bpr += 0.4) {
+        const res = calculateCycle({ ...baseInputs, bypassRatio: bpr });
+        if (res.performance.isValid && res.performance.specificThrust > 0) {
+            points.push({
+                bpr: bpr,
+                sfc: res.performance.sfc,
+                specificThrust: res.performance.specificThrust
+            });
+        }
+    }
+    return points;
+};
+
+/**
  * 飞行包线计算
+ * 
+ * 修正说明:
  * 发动机并不是在所有高度都吸入相同的物理流量。
- * 假设输入的 massFlow 是海平面静态 (SLS) 下的修正流量。
+ * 我们假设输入的 massFlow 是海平面静态 (SLS) 下的修正流量。
  * 在高空高速时，物理流量 m_dot = m_corr * (delta / sqrt(theta))
- * 计算出的总推力 (Thrust) 才具有真实的物理量级意义。
- * SFC 是比值参数，对流量修正不敏感，推力绝对值对此非常敏感。
+ * 这样计算出的总推力 (Thrust) 才具有真实的物理量级意义。
+ * 注: SFC 是比值参数，对流量修正不敏感，但推力绝对值对此非常敏感。
  */
 export const calculateEnvelope = (baseInputs: EngineInputs): EnvelopePoint[] => {
     const data: EnvelopePoint[] = [];
@@ -341,8 +384,8 @@ export const calculateEnvelope = (baseInputs: EngineInputs): EnvelopePoint[] => 
     const maxAlt = 20;   // km
 
     // 计算参考点(SLS)的修正参数
-    // T=288.15K, P=101325Pa
-    // 假设输入流量为设计点修正流量
+    // Standard Day: T=288.15K, P=101325Pa
+    // 假设输入流量即为设计点修正流量
     const designCorrectedFlow = baseInputs.massFlow; 
 
     for (let i = 0; i <= machSteps; i++) {

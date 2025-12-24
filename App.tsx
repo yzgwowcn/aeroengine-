@@ -1,6 +1,6 @@
 import React, { useState, useRef } from 'react';
 import { EngineInputs } from './types';
-import { calculateCycle, calculateTrends, calculateEnvelope } from './services/engineService';
+import { calculateCycle, calculateTrends, calculateEnvelope, calculateFanTrends, calculateBypassTrends } from './services/engineService';
 import { InputSection } from './components/InputSection';
 import { ResultsSection } from './components/ResultsSection';
 
@@ -44,6 +44,8 @@ function App() {
   const [calculationData, setCalculationData] = useState(() => ({
     cycleResult: calculateCycle(DEFAULT_INPUTS),
     trendData: calculateTrends(DEFAULT_INPUTS),
+    fanTrendData: calculateFanTrends(DEFAULT_INPUTS),
+    bypassTrendData: calculateBypassTrends(DEFAULT_INPUTS),
     envelopeData: calculateEnvelope(DEFAULT_INPUTS)
   }));
 
@@ -51,8 +53,10 @@ function App() {
   const handleCalculate = () => {
     const cycleResult = calculateCycle(inputs);
     const trendData = calculateTrends(inputs);
+    const fanTrendData = calculateFanTrends(inputs);
+    const bypassTrendData = calculateBypassTrends(inputs);
     const envelopeData = calculateEnvelope(inputs);
-    setCalculationData({ cycleResult, trendData, envelopeData });
+    setCalculationData({ cycleResult, trendData, fanTrendData, bypassTrendData, envelopeData });
 
     // 移动端体验优化：点击计算后自动滚动到结果区域
     if (window.innerWidth < 1024 && resultsRef.current) {
@@ -86,6 +90,8 @@ function App() {
                   result={calculationData.cycleResult} 
                   inputs={inputs} 
                   trendData={calculationData.trendData}
+                  fanTrendData={calculationData.fanTrendData}
+                  bypassTrendData={calculationData.bypassTrendData}
                   envelopeData={calculationData.envelopeData}
                 />
             </div>

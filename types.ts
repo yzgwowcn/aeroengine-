@@ -64,6 +64,18 @@ export interface ChartPoint {
   specificThrust: number; // 单位推力
 }
 
+export interface FanTrendPoint {
+  fpr: number; // 风扇压比 (X轴)
+  sfc: number;
+  specificThrust: number;
+}
+
+export interface BypassTrendPoint {
+  bpr: number; // 涵道比 (X轴)
+  sfc: number;
+  specificThrust: number;
+}
+
 export interface EnvelopePoint {
   mach: number;     // 马赫数
   altitude: number; // 高度

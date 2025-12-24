@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { CalculationResult, EngineInputs, ChartPoint, EnvelopePoint } from '../types';
+import { CalculationResult, EngineInputs, ChartPoint, EnvelopePoint, FanTrendPoint, BypassTrendPoint } from '../types';
 import { StationChart } from './StationChart';
 import { PerformanceCharts } from './PerformanceCharts';
 import { ResponsiveContainer, ScatterChart, Scatter, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, ZAxis, ReferenceLine, Cell } from 'recharts';
@@ -8,6 +8,8 @@ interface Props {
   result: CalculationResult;
   inputs: EngineInputs;
   trendData: ChartPoint[];
+  fanTrendData: FanTrendPoint[];
+  bypassTrendData: BypassTrendPoint[];
   envelopeData: EnvelopePoint[];
 }
 
@@ -16,7 +18,7 @@ const MetricCard: React.FC<{
   value: string; 
   unit?: string; 
   subValue?: string;
-  extraInfo?: string; 
+  extraInfo?: string; // 新增额外信息字段
   icon?: React.ReactNode;
 }> = ({ title, value, unit, subValue, extraInfo, icon }) => (
   <div className="bg-white p-4 lg:p-5 rounded-xl shadow-sm border border-slate-100 relative overflow-hidden hover:shadow-md transition-shadow group">
@@ -35,6 +37,7 @@ const MetricCard: React.FC<{
   </div>
 );
 
+// Custom Rect Shape for high-res heatmap tiling
 const HeatmapRect = (props: any) => {
     const { cx, cy, fill } = props;
     const w = 18; 
@@ -43,11 +46,12 @@ const HeatmapRect = (props: any) => {
 };
 
 const FlightEnvelopeHeatmap: React.FC<{ data: EnvelopePoint[], currentMach: number, currentAlt: number }> = ({ data, currentMach, currentAlt }) => {
+    // Find min/max SFC for color scaling
     const sfcs = data.map(d => d.sfc);
     const minSfc = Math.min(...sfcs);
     const maxSfc = Math.max(...sfcs);
 
-    // 颜色设定
+    // Simple color interpolation: Blue (Best) -> Green -> Yellow -> Red (Worst)
     const getColor = (sfc: number) => {
         const t = (sfc - minSfc) / (maxSfc - minSfc || 1);
         if (t < 0.25) return `rgb(0, ${Math.floor(t*4*255)}, 255)`; // Blue to Cyan
@@ -108,14 +112,14 @@ const FlightEnvelopeHeatmap: React.FC<{ data: EnvelopePoint[], currentMach: numb
                         }}
                     />
                     
-                    {/* 热力图设置 */}
+                    {/* The Heatmap Rectangles */}
                     <Scatter data={data} shape={<HeatmapRect />}>
                         {data.map((entry, index) => (
                             <Cell key={`cell-${index}`} fill={getColor(entry.sfc)} />
                         ))}
                     </Scatter>
 
-                    {/* 当前点 */}
+                    {/* Current Operating Point (On top) */}
                     <Scatter 
                         data={[{ mach: currentMach, altitude: currentAlt }]} 
                         fill="black" 
@@ -140,7 +144,7 @@ const FlightEnvelopeHeatmap: React.FC<{ data: EnvelopePoint[], currentMach: numb
     );
 };
 
-export const ResultsSection: React.FC<Props> = ({ result, inputs, trendData, envelopeData }) => {
+export const ResultsSection: React.FC<Props> = ({ result, inputs, trendData, fanTrendData, bypassTrendData, envelopeData }) => {
   const [activeTab, setActiveTab] = useState<'station' | 'optimization' | 'envelope'>('station');
   const { specificThrust, sfc, thrust, overallEfficiency, fanPressureRatio, hpcPressureRatio, isValid } = result.performance;
 
@@ -189,10 +193,10 @@ export const ResultsSection: React.FC<Props> = ({ result, inputs, trendData, env
         />
       </div>
 
-      {/* 主要分析部分 */}
+      {/* Main Analysis Section */}
       <div className="bg-white rounded-xl shadow-sm border border-slate-100 min-h-[400px] lg:min-h-[550px]">
         
-        {/* 移动端优化*/}
+        {/* Tabs inside Card - Horizontal Scrollable on mobile */}
         <div className="flex border-b border-slate-100 px-4 lg:px-6 pt-4 gap-6 overflow-x-auto no-scrollbar whitespace-nowrap">
             <button 
                 onClick={() => setActiveTab('station')}
@@ -238,7 +242,12 @@ export const ResultsSection: React.FC<Props> = ({ result, inputs, trendData, env
 
             {activeTab === 'optimization' && (
                 <div className="h-full">
-                     <PerformanceCharts data={trendData} currentOpr={inputs.overallPressureRatio} />
+                     <PerformanceCharts 
+                        trendData={trendData} 
+                        fanTrendData={fanTrendData}
+                        bypassTrendData={bypassTrendData}
+                        inputs={inputs} 
+                     />
                 </div>
             )}
 

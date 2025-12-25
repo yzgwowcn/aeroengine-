@@ -309,7 +309,7 @@ export const calculateCycle = (inputs: EngineInputs): CalculationResult => {
 
 export const calculateTrends = (baseInputs: EngineInputs): ChartPoint[] => {
   const points: ChartPoint[] = [];
-  for (let opr = 10; opr <= 60; opr += 2.0) {
+  for (let opr = 10; opr <= 60; opr += 1.0) {
     if (opr <= baseInputs.fanPressureRatio) continue;
     
     // 趋势分析假设物理流量不变，主要看参数比值变化
@@ -353,7 +353,7 @@ export const calculateFanTrends = (baseInputs: EngineInputs): FanTrendPoint[] =>
 export const calculateBypassTrends = (baseInputs: EngineInputs): BypassTrendPoint[] => {
     const points: BypassTrendPoint[] = [];
     // 涵道比范围 0.2 到 15
-    for (let bpr = 0.2; bpr <= 15.0; bpr += 0.4) {
+    for (let bpr = 0.2; bpr <= 15.0; bpr += 0.1) {
         const res = calculateCycle({ ...baseInputs, bypassRatio: bpr });
         if (res.performance.isValid && res.performance.specificThrust > 0) {
             points.push({
@@ -371,10 +371,10 @@ export const calculateBypassTrends = (baseInputs: EngineInputs): BypassTrendPoin
  * 
  * 修正说明:
  * 发动机并不是在所有高度都吸入相同的物理流量。
- * 我们假设输入的 massFlow 是海平面静态 (SLS) 下的修正流量。
+ * 假设输入的 massFlow 是海平面静态 (SLS) 下的修正流量。
  * 在高空高速时，物理流量 m_dot = m_corr * (delta / sqrt(theta))
- * 这样计算出的总推力 (Thrust) 才具有真实的物理量级意义。
- * 注: SFC 是比值参数，对流量修正不敏感，但推力绝对值对此非常敏感。
+ * 计算出的总推力 (Thrust) 才具有真实的物理量级意义。
+ * SFC 是比值参数，对流量修正不敏感，但推力绝对值对此非常敏感。
  */
 export const calculateEnvelope = (baseInputs: EngineInputs): EnvelopePoint[] => {
     const data: EnvelopePoint[] = [];
